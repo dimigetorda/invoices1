@@ -148,6 +148,7 @@ export default function App() {
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [allUserSettings, setAllUserSettings] = useState<Record<string, UserSettings>>({});
   const [pinInput, setPinInput] = useState('');
+  const [systemStatus, setSystemStatus] = useState<{ ok: boolean, supabase: boolean } | null>(null);
 
   const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(null);
   const [invoices, setInvoices] = useState<Record<string, InvoiceData>>({});
@@ -166,6 +167,14 @@ export default function App() {
   const currentPeriod = useMemo(() => {
     return periods.find(p => p.isCurrent) || periods[0];
   }, [periods]);
+
+  useEffect(() => {
+    // Check system status on load
+    fetch('/api/health')
+      .then(res => res.json())
+      .then(data => setSystemStatus({ ok: data.status === 'ok', supabase: data.supabaseConfigured }))
+      .catch(() => setSystemStatus({ ok: false, supabase: false }));
+  }, []);
 
   useEffect(() => {
     if (currentUser && isAuthenticated) {
@@ -509,6 +518,13 @@ export default function App() {
           <h1 className="text-3xl font-serif font-bold mb-2">Welcome</h1>
           <p className="text-stone-500 mb-10">Select your account to continue</p>
           
+          {systemStatus && !systemStatus.supabase && (
+            <div className="mb-8 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-center gap-3 text-amber-800 text-sm text-left">
+              <AlertCircle className="w-5 h-5 shrink-0" />
+              <p><strong>Database not configured.</strong> Please set SUPABASE_URL and SUPABASE_ANON_KEY in Vercel settings.</p>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-4">
             <button 
               onClick={() => handleUserSelect('dimitar')}
