@@ -205,11 +205,13 @@ setupVite();
 // Export for Vercel
 export default app;
 
+// Initialize defaults if keys are present
+if (supabaseUrl && supabaseAnonKey) {
+  initializeDefaults();
+}
+
 // Start server if not on Vercel
 if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
-  if (supabaseUrl && supabaseAnonKey) {
-    initializeDefaults();
-  }
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
