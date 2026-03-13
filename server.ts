@@ -60,9 +60,8 @@ app.get("/api/settings/:userId", async (req, res) => {
       .eq("user_id", userId)
       .single();
 
-    if (error && error.code !== "PGRST116") throw error; // PGRST116 is "no rows returned"
+    if (error && error.code !== "PGRST116") throw error;
     
-    // If no data and it's a default user, try to initialize on the fly
     if (!data && (userId === 'dimitar' || userId === 'gordana')) {
       const defaults: Record<string, any> = {
         dimitar: { user_id: 'dimitar', pin: '0000', base_rate: 104.0, deployment_rate: 12.0, deployment_label: 'App Deployments', meeting_rate_unit: 2, meeting_rate_value: 5 },
@@ -155,9 +154,35 @@ app.get("/api/exchange-rate", async (req, res) => {
     res.json({ rate: data.rates.EUR });
   } catch (error) {
     console.error("Fetch exchange rate error:", error);
-    // Fallback rate if API fails
     res.json({ rate: 0.95 });
   }
+});
+
+// Historical USD->EUR rate for a specific date (YYYY-MM-DD)
+// Used to calculate what the EUR value was on the invoice due date
+app.get("/api/exchange-rate/historical/:date", async (req, res) => {
+  const { date } = req.params;
+
+  // Try frankfurter.app first (free, reliable, no key needed)
+  try {
+    const response = await fetch(`https://api.frankfurter.app/${date}?from=USD&to=EUR`);
+    if (response.ok) {
+      const data = await response.json();
+      const rate = data.rates?.EUR;
+      if (rate) {
+        return res.json({ rate, date, source: "frankfurter" });
+      }
+    }
+  } catch (_) {}
+
+  // Fallback: current rate
+  try {
+    const response = await fetch("https://api.exchangerate-api.com/v4/latest/USD");
+    const data = await response.json();
+    return res.json({ rate: data.rates.EUR, date, source: "fallback-current" });
+  } catch (_) {}
+
+  res.json({ rate: 0.95, date, source: "hardcoded-fallback" });
 });
 
 app.get("/api/invoices/:userId", async (req, res) => {
@@ -205,14 +230,16 @@ app.post("/api/invoices/:userId", async (req, res) => {
   }
 });
 
-app.delete("/api/invoices/:id", async (req, res) => {
-  const { id } = req.params;
+// FIXED: delete route scoped to userId to prevent cross-user deletion
+app.delete("/api/invoices/:userId/:id", async (req, res) => {
+  const { userId, id } = req.params;
   if (!supabase) return res.status(503).json({ error: "Database not configured" });
   try {
     const { error } = await supabase
       .from("invoices")
       .delete()
-      .eq("id", id);
+      .eq("id", id)
+      .eq("user_id", userId);
 
     if (error) throw error;
     res.json({ success: true });
@@ -240,15 +267,12 @@ async function setupVite() {
 
 setupVite();
 
-// Export for Vercel
 export default app;
 
-// Initialize defaults if keys are present
 if (supabaseUrl && supabaseAnonKey) {
   initializeDefaults();
 }
 
-// Start server if not on Vercel
 if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
